@@ -3,9 +3,6 @@
 Modern Python3 async [aiohttp](https://github.com/aio-libs/aiohttp)-based JSONRPC client for [Bitcoin Core](https://github.com/bitcoin/bitcoin).  
 
 This library allows the use of any [Bitcoin RPC method](https://developer.bitcoin.org/reference/rpc/) and now includes support for proxy configuration and `rpcwallet` commands.
-
-![Version] ![License]
-
 ---
 
 ## New Features
