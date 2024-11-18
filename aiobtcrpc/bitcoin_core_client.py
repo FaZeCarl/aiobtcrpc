@@ -3,12 +3,12 @@ import logging
 import json
 from decimal import Decimal
 import urllib.parse as urlparse
-
 from aiohttp import ClientSession
-
+from aiohttp_socks import ProxyConnector
 
 log = logging.getLogger("BitcoinCoreClient")
 
+proxy_url = f"socks5://{proxy_ip}:{proxy_port}"
 
 class JSONRPCException(Exception):
     def __init__(self, rpc_error):
@@ -22,17 +22,22 @@ class JSONRPCException(Exception):
         self.code = rpc_error['code'] if 'code' in rpc_error else None
         self.message = rpc_error['message'] if 'message' in rpc_error else None
 
-
 class BitcoinCoreClient(object):
-    def __init__(self, rpc_url: str, service_name=None):
+    def __init__(self, rpc_url: str, service_name=None, wallet_name=None):
         """
         :arg rpc_url: in format "http://{user}:{password}@{host}:{port}"
         """
-
-        self.__service_url = rpc_url
+        if wallet_name:
+            self.__service_url = f"{rpc_url}/wallet/{wallet_name}"
+        else:
+            self.__service_url = rpc_url
         self.__service_name = service_name
         self.__url = urlparse.urlparse(rpc_url)
         self.__id_count = 0
+
+        # Hard-coded proxy connector for Tor
+        self.__proxy_connector = ProxyConnector.from_url(proxy_url)
+
         (user, passwd) = (self.__url.username, self.__url.password)
         try:
             user = user.encode('utf8')
@@ -58,12 +63,18 @@ class BitcoinCoreClient(object):
                                'params': args,
                                'id': self.__id_count}, ensure_ascii=False, default=str)
 
-        async with ClientSession() as session:
-            resp = await session.post(url=self.__service_url, data=postdata)
-            json_data = await resp.read()
-            json_resp = json.loads(json_data, parse_float=Decimal)
-            if json_resp['error']:
-                log.debug(json_resp)
-                raise JSONRPCException(json_resp['error'])
+        try:
+            async with ClientSession(connector=self.__proxy_connector) as session:
+                resp = await session.post(url=self.__service_url, data=postdata,)
+                json_data = await resp.read()
+                json_resp = json.loads(json_data, parse_float=Decimal)
+                if json_resp['error']:
+                    log.debug(json_resp)
+                    raise JSONRPCException(json_resp['error'])
 
-            return json_resp['result']
+                return json_resp['result']
+        except Exception as e:
+            log.error("Error during RPC call", exc_info=True)
+            logging.error("RPC call failed:", e)
+            return None
+
